@@ -1,6 +1,8 @@
-streamlit
-google-generativeai
-opencv-python-headless
-pillow
-python-dotenv
+fastapi
+uvicorn
+python-multipart
 numpy
+Pillow
+opencv-python-headless
+google-generativeai
+python-dotenv

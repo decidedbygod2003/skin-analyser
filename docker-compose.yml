@@ -1,5 +1,5 @@
 version: '3.8'
-
+ 
 services:
   skin-analyser:
     build:
@@ -7,24 +7,24 @@ services:
       dockerfile: Dockerfile
     container_name: skin-analyser-app
     restart: unless-stopped
-
+ 
     # Port mapping
     ports:
       - "8501:8501"
-
+ 
     # Environment variables
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-
+ 
     # Environment file (alternative to passing env vars)
     env_file:
       - .env
-
+ 
     # Volume mounts for persistent data (optional)
     volumes:
       - ./data:/app/data
       - /tmp:/tmp
-
+ 
     # Resource limits (adjust based on your Azure VM specs)
     deploy:
       resources:
@@ -34,14 +34,14 @@ services:
         reservations:
           cpus: '1'
           memory: 1G
-
+ 
     # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-
+ 
     # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/docs"]
@@ -49,7 +49,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
+ 
 # Optional: Add nginx reverse proxy for production
   nginx:
     image: nginx:alpine
@@ -65,7 +65,9 @@ services:
       - skin-analyser
     profiles:
       - production
-
+ 
 volumes:
   data:
     driver: local
+ 
+ 

@@ -2,25 +2,25 @@
 Skin Concern Detection using Google Gemini AI
 Professional dermatology-grade skin analysis with improved bounding box detection
 """
-
+ 
 import json
 import logging
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
-
+ 
 import cv2
 import google.generativeai as genai
 from dotenv import load_dotenv
 from PIL import Image
-
+ 
 # --------------------------------------------------
 # LOGGING
 # --------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 load_dotenv()
-
+ 
 # --------------------------------------------------
 # CONFIG
 # --------------------------------------------------
@@ -31,15 +31,13 @@ class Config:
         "oiliness",
         "wrinkles",
         "finelines",
-        "fine lines",
-        "dark_circles",
         "dark circles",
         "redness",
         "pores",
         "dryness",
         "pigmentation",
     }
-
+ 
     LABEL_COLORS = {
         "acne": (0, 0, 255),
         "oiliness": (0, 255, 255),
@@ -53,9 +51,9 @@ class Config:
         "dryness": (255, 255, 255),
         "pigmentation": (139, 69, 19),
     }
-
+ 
     MODEL_NAME = "gemini-2.5-flash"
-
+ 
 # --------------------------------------------------
 # GEMINI CLIENT WITH IMPROVED PROMPTING
 # --------------------------------------------------
@@ -66,7 +64,7 @@ class GeminiClient:
             raise RuntimeError("GOOGLE_API_KEY missing from environment")
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(Config.MODEL_NAME)
-
+ 
     @staticmethod
     def clean_json(text: str) -> Dict:
         text = text.strip()
@@ -74,22 +72,22 @@ class GeminiClient:
         if text.startswith("```"):
             text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
-
+ 
     def analyze(self, image_path: str, prompt: str) -> Dict:
         """Analyze image with Gemini and return structured JSON"""
         image = Image.open(image_path)
-        
+       
         try:
             response = self.model.generate_content([prompt, image])
-            
+           
             # Log raw response for debugging
             logger.info(f"Raw Gemini response (first 800 chars): {response.text[:800]}")
-            
+           
             parsed = self.clean_json(response.text)
             logger.info(f"Parsed JSON structure: {json.dumps(parsed, indent=2)[:500]}")
-            
+           
             return parsed
-            
+           
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing failed: {e}")
             logger.error(f"Full response text: {response.text}")
@@ -97,7 +95,7 @@ class GeminiClient:
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
             raise
-
+ 
 # --------------------------------------------------
 # IMPROVED DETECTION NORMALIZER
 # --------------------------------------------------
@@ -107,7 +105,7 @@ class DetectionNormalizer:
         """
         Normalizes Gemini output into standardized format.
         Handles multiple box formats and creates default boxes if missing.
-        
+       
         Returns:
         {
           "label": [
@@ -119,40 +117,40 @@ class DetectionNormalizer:
         }
         """
         normalized = {}
-
+ 
         for label, items in raw.items():
             label_l = label.lower().strip().replace("_", " ")
-
+ 
             # Check if label is allowed
             if label_l not in Config.ALLOWED_LABELS and label_l.replace(" ", "_") not in Config.ALLOWED_LABELS:
                 logger.warning(f"Skipping unknown label: {label}")
                 continue
-
+ 
             clean_items = []
-            
+           
             # Handle if items is not a list
             if not isinstance(items, list):
                 items = [items]
-
+ 
             for idx, d in enumerate(items):
                 # Handle different data structures
                 if isinstance(d, dict):
                     conf = d.get("confidence", d.get("severity", 50))
                     box = d.get("box") or d.get("bbox") or d.get("box_2d") or d.get("location")
-                    
+                   
                     # If no confidence provided, use default
                     if conf is None:
                         conf = 50
                         logger.warning(f"No confidence found for {label}, using default: 50")
-                    
+                   
                     # If no box provided, create default box for this concern area
                     if box is None:
                         logger.warning(f"No bounding box found for {label}, creating default box")
                         box = DetectionNormalizer._create_default_box(label_l, idx)
-                    
+                   
                     # Normalize box format
                     normalized_box = DetectionNormalizer._normalize_box(box)
-                    
+                   
                     if normalized_box:
                         clean_items.append({
                             "confidence": float(conf),
@@ -165,17 +163,17 @@ class DetectionNormalizer:
                         "confidence": 50,
                         "box_pct": DetectionNormalizer._create_default_box(label_l, idx)
                     })
-
+ 
             if clean_items:
                 normalized[label_l] = clean_items
                 logger.info(f"Normalized {len(clean_items)} detections for '{label_l}'")
-
+ 
         return normalized
-
+ 
     @staticmethod
     def _normalize_box(box: Dict) -> Optional[Dict]:
         """Convert various box formats to percentage-based x_min, y_min, x_max, y_max"""
-        
+       
         # Format 1: x_min, y_min, x_max, y_max (percentage)
         if all(k in box for k in ["x_min", "y_min", "x_max", "y_max"]):
             return {
@@ -184,7 +182,7 @@ class DetectionNormalizer:
                 "x_max": float(box["x_max"]),
                 "y_max": float(box["y_max"])
             }
-        
+       
         # Format 2: x, y, width, height (percentage)
         if all(k in box for k in ["x", "y", "width", "height"]):
             return {
@@ -193,7 +191,7 @@ class DetectionNormalizer:
                 "x_max": float(box["x"]) + float(box["width"]),
                 "y_max": float(box["y"]) + float(box["height"])
             }
-        
+       
         # Format 3: top, left, bottom, right
         if all(k in box for k in ["top", "left", "bottom", "right"]):
             return {
@@ -202,14 +200,14 @@ class DetectionNormalizer:
                 "x_max": float(box["right"]),
                 "y_max": float(box["bottom"])
             }
-        
+       
         logger.warning(f"Unknown box format: {box}")
         return None
-
+ 
     @staticmethod
     def _create_default_box(label: str, index: int = 0) -> Dict:
         """Create default bounding boxes based on typical face regions"""
-        
+       
         # Default boxes for common facial regions (percentage-based)
         default_boxes = {
             "acne": {"x_min": 25, "y_min": 25, "x_max": 75, "y_max": 65},  # Full face
@@ -224,17 +222,17 @@ class DetectionNormalizer:
             "dryness": {"x_min": 25, "y_min": 30, "x_max": 75, "y_max": 70},  # Full face
             "pigmentation": {"x_min": 30, "y_min": 30, "x_max": 70, "y_max": 60},  # Face area
         }
-        
+       
         # Return default box for this label, with slight offset if multiple detections
         default = default_boxes.get(label, {"x_min": 25, "y_min": 25, "x_max": 75, "y_max": 75})
-        
+       
         # Add slight offset for multiple detections of same type
         if index > 0:
             offset = index * 5
             default = {k: v + offset if "min" in k else v - offset for k, v in default.items()}
-        
+       
         return default
-
+ 
 # --------------------------------------------------
 # IMAGE ANNOTATOR
 # --------------------------------------------------
@@ -245,7 +243,7 @@ class ImageAnnotator:
             raise ValueError(f"Failed to load image: {image_path}")
         self.h, self.w, _ = self.image.shape
         logger.info(f"Image loaded: {self.w}x{self.h}")
-
+ 
     def _pct_to_px(self, b: Dict) -> tuple:
         """Convert percentage coordinates to pixels"""
         return (
@@ -254,7 +252,7 @@ class ImageAnnotator:
             int(b["x_max"] / 100 * self.w),
             int(b["y_max"] / 100 * self.h),
         )
-
+ 
     def draw(self, detections: Dict):
         """Draw bounding boxes and labels on image"""
         if not detections:
@@ -270,38 +268,38 @@ class ImageAnnotator:
                 2
             )
             return
-
+ 
         for label, items in detections.items():
             color = Config.LABEL_COLORS.get(label, (255, 255, 255))
             logger.info(f"Drawing {len(items)} boxes for '{label}'")
-
+ 
             for idx, d in enumerate(items):
                 box_pct = d.get("box_pct")
                 if not box_pct:
                     logger.warning(f"No box_pct found for {label}")
                     continue
-
+ 
                 try:
                     x1, y1, x2, y2 = self._pct_to_px(box_pct)
-                    
+                   
                     # Ensure coordinates are within image bounds
                     x1, y1 = max(0, x1), max(0, y1)
                     x2, y2 = min(self.w, x2), min(self.h, y2)
-                    
+                   
                     # Draw rectangle
                     cv2.rectangle(self.image, (x1, y1), (x2, y2), color, 3)
-                    
+                   
                     # Draw label with background
                     label_text = f"{label.replace('_', ' ').title()}: {d['confidence']:.0f}%"
-                    
+                   
                     # Get text size for background
                     (text_w, text_h), baseline = cv2.getTextSize(
-                        label_text, 
-                        cv2.FONT_HERSHEY_SIMPLEX, 
-                        0.7, 
+                        label_text,
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
                         2
                     )
-                    
+                   
                     # Draw background rectangle for text
                     cv2.rectangle(
                         self.image,
@@ -310,7 +308,7 @@ class ImageAnnotator:
                         color,
                         -1  # Filled
                     )
-                    
+                   
                     # Draw text
                     cv2.putText(
                         self.image,
@@ -321,13 +319,13 @@ class ImageAnnotator:
                         (255, 255, 255),  # White text
                         2
                     )
-                    
+                   
                     logger.info(f"Drew box for {label} at ({x1},{y1})-({x2},{y2})")
-                    
+                   
                 except Exception as e:
                     logger.error(f"Failed to draw box for {label}: {e}")
                     continue
-
+ 
     def save(self, path: str):
         """Save annotated image"""
         success = cv2.imwrite(path, self.image)
@@ -335,7 +333,7 @@ class ImageAnnotator:
             logger.info(f"Saved annotated image to: {path}")
         else:
             logger.error(f"Failed to save image to: {path}")
-
+ 
 # --------------------------------------------------
 # STATISTICS
 # --------------------------------------------------
@@ -345,7 +343,7 @@ class StatisticsGenerator:
         """Generate summary statistics from detections"""
         if not detections:
             return {}
-            
+           
         stats = {}
         for label, items in detections.items():
             if items:
@@ -358,14 +356,14 @@ class StatisticsGenerator:
                     "min_confidence": round(min(i["confidence"] for i in items), 2)
                 }
         return stats
-
-
+ 
+ 
 # --------------------------------------------------
 # IMPROVED PROMPT GENERATOR
 # --------------------------------------------------
 def get_analysis_prompt(is_camera: bool = False) -> str:
     """Generate optimized prompt for Gemini"""
-    
+   
     base = """You are a professional dermatology-grade skin analysis AI trained in
 clinical dermatology, age-related skin physiology, and ethnodermatology.
  
@@ -375,6 +373,28 @@ Your task is to analyze the provided facial image and detect ONLY the following 
  
 You MUST return ONLY a strictly valid JSON object.
 DO NOT include any text, explanation, markdown, or comments before or after the JSON.
+
+═══════════════════════════════════════════════════════════
+GLOBAL OUTPUT RULES (STRICT – NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════════
+
+1. CONFIDENCE MUST BE A NUMBER (float or integer).
+   ✗ DO NOT use words such as: "low", "medium", "high", "moderate".
+   ✓ Allowed: numeric values ONLY (40–95).
+
+2. DO NOT assign MEDIUM confidence (60–79%) unless
+   ALL clinical criteria for that condition are clearly met.
+
+3. If criteria are NOT clearly met:
+   ✓ Either assign LOW confidence (40–59%)
+   ✓ OR do NOT detect the concern at all.
+
+4. When uncertain, prefer:
+   → NON-DETECTION ({})
+   → rather than an unjustified MEDIUM confidence.
+
+5. NEVER inflate confidence to fill output.
+   Returning {} is always acceptable and clinically correct.
  
 ═══════════════════════════════════════════════════════════
 STEP 1 — VISUAL CONTEXT ESTIMATION (INTERNAL ONLY)
@@ -415,7 +435,7 @@ Adjust detection sensitivity and confidence scoring based on estimated AGE GROUP
 ▶ YOUNG ADULT (20–35)
 ✓ Prioritize: ACNE (including hormonal patterns), PORES, OILINESS
 ✓ Allow EARLY FINE LINES
-✓ Detect pigmentation mainly as PIH or early, melasma or Sunspots 
+✓ Detect pigmentation mainly as PIH or early, melasma or Sunspots
 ✓ Wrinkles most likely will be shallow to qualify
  
 ▶ ADULT (36–50)
@@ -508,9 +528,33 @@ Use strict, evidence-based dermatological criteria for each condition:
 - Must show 15–20% contrast from baseline skin
  
 ═══════════════════════════════════════════════════════════
-STEP 5 — BOUNDING BOX & CONFIDENCE REQUIREMENTS
+STEP 4 — CLINICAL DETECTION THRESHOLDS
 ═══════════════════════════════════════════════════════════
- 
+
+Use STRICT criteria:
+
+LOW CONFIDENCE (40–59%)
+- Early, subtle, or ambiguous findings
+- Limited clarity
+- Mild texture change
+
+MEDIUM CONFIDENCE (60–79%)
+- MULTIPLE confirming visual signs
+- Typical anatomical distribution
+- Clear visibility at rest
+- Adequate lighting and resolution
+
+HIGH CONFIDENCE (80–95%)
+- Classic textbook presentation
+- Clear borders and contrast
+- Unambiguous clinical evidence
+
+⚠️ If MEDIUM criteria are not fully met → downgrade to LOW or suppress.
+
+═══════════════════════════════════════════════════════════
+STEP 5 — BOUNDING BOX REQUIREMENTS
+═══════════════════════════════════════════════════════════
+
 For EACH detected concern:
 ✓ Use percentage coordinates (0–100)
 ✓ Format:
@@ -518,11 +562,6 @@ For EACH detected concern:
 ✓ Boxes must be tight and specific
 ✓ Multiple regions require multiple boxes
 ✓ Ensure x_min < x_max and y_min < y_max
- 
-CONFIDENCE SCORING:
-- HIGH (80–95%): Clear, classic, well-lit presentation
-- MEDIUM (60–79%): Visible but mild or subtle
-- LOW (40–59%): Early, ambiguous, or limited clarity
  
 ═══════════════════════════════════════════════════════════
 STRICT EXCLUSION CRITERIA
@@ -548,14 +587,15 @@ If NO clinically valid concerns are detected, return:
  
  
 """
-
+ 
     if is_camera:
         base += """
-
+ 
 CAMERA IMAGE NOTES:
 - Accept lower confidence (40%+) for subtle concerns
 - Account for lighting variations
 - Be more lenient with detection
 """
-
+ 
     return base
+ 

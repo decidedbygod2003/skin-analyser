@@ -62,7 +62,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose FastAPI port
-EXPOSE 8000
+EXPOSE 8501
 
 # Environment variables (optional but good practice)
 ENV PYTHONUNBUFFERED=1
@@ -70,7 +70,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Health check for API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/docs || exit 1
+    CMD curl -f http://localhost:8501/docs || exit 1
 
-# Run FastAPI app
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI app on port 8501
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8501"]
+
